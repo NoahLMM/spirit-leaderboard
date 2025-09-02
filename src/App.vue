@@ -133,7 +133,8 @@
 </template>
 
 <script>
-import { fetchTable } from "./api/airtable";
+// import { fetchTable } from "./api/airtable";
+import { fetchTable } from "./api/fetchTables";
 
 export default {
   data() {
