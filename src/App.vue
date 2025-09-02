@@ -181,8 +181,8 @@ export default {
         sort: [{ field: "Created", direction: "desc" }]
       });
 
-      console.log("Leaderboard:", this.leaderboard);
-      console.log("Feed:", this.feed);
+      //console.log("Leaderboard:", this.leaderboard);
+      //console.log("Feed:", this.feed);
     } catch (err) {
       console.error("Error loading data:", err);
     }
