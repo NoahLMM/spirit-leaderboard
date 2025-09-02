@@ -170,19 +170,23 @@ export default {
     },
   },
   methods: {
-    async loadData() {
-      try {
-        this.leaderboard = await fetchTable("Members");
-        this.feed = await fetchTable(
-          "Submissions",
-          "filterByFormula=Approved+%3D+1&sort[0][field]=Created&sort[0][direction]=desc&maxRecords=10"
-        );
-        console.log("Leaderboard:", this.leaderboard);
-        console.log("Feed:", this.feed);
-      } catch (err) {
-        console.error("Error loading data:", err);
-      }
-    },
+  async loadData() {
+    try {
+      // Fetch leaderboard from Members table
+      this.leaderboard = await fetchTable("Members");
+
+      // Fetch feed from Submissions table with approval filter
+      this.feed = await fetchTable("Submissions", {
+        filter: "Approved=1",
+        sort: [{ field: "Created", direction: "desc" }]
+      });
+
+      console.log("Leaderboard:", this.leaderboard);
+      console.log("Feed:", this.feed);
+    } catch (err) {
+      console.error("Error loading data:", err);
+    }
+  },
     formatDate(isoString) {
       if (!isoString) return "No date";
       const date = new Date(isoString);
