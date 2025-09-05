@@ -1,37 +1,55 @@
-import Airtable from 'airtable';
-import formidable from 'formidable';
-import fs from 'fs';
+import Airtable from "airtable";
 
-export const config = {
-  api: { bodyParser: false }
-};
+const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
+  .base(process.env.AIRTABLE_BASE_ID);
 
-export default async (req, res) => {
+export const handler = async (event) => {
   try {
-    const form = formidable();
-    form.parse(req, async (err, fields, files) => {
-      if (err) {
-        res.status(500).json({ error: 'Error parsing form' });
-        return;
-      }
+    if (event.httpMethod !== "POST") {
+      return { statusCode: 405, body: "Method Not Allowed" };
+    }
 
-      const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const data = JSON.parse(event.body);
+    const { email, challengeId, notes, proofUrl } = data;
 
-      const record = await base('Submissions').create([
-        {
-          fields: {
-            Name: fields.name,
-            Email: fields.email,
-            Task: fields.task,
-            Notes: fields.notes,
-            Status: 'Pending'
-          }
-        }
-      ]);
+    // 1. Look up member by email
+    const members = await base("Members")
+      .select({
+        filterByFormula: `{Email} = "${email}"`, // 👈 field name in Members table
+        maxRecords: 1,
+      })
+      .firstPage();
 
-      res.status(200).json({ success: true, recordId: record[0].id });
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (members.length === 0) {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ error: "Member not found for this email" }),
+      };
+    }
+
+    const memberId = members[0].id; // Airtable record ID of the member
+
+    // 2. Create new submission linked to the member
+    const created = await base("Submissions").create([
+      {
+        fields: {
+          Member: [memberId], // 👈 link to Members table
+          Challenge: [challengeId], // assuming Challenge is a linked field too
+          Notes: notes || "",
+          Proof: proofUrl ? [{ url: proofUrl }] : [],
+        },
+      },
+    ]);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: true, record: created[0] }),
+    };
+  } catch (err) {
+    console.error("Submit error:", err);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: err.message }),
+    };
   }
 };
