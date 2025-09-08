@@ -11,8 +11,9 @@
           v-model="form.email"
           type="email"
           required
-          placeholder="abc123@case.edu"
+          placeholder="example@school.edu"
           class="w-full p-3 text-white placeholder-gray-400 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          @blur="loadMemberSubmissions"
         />
       </div>
 
@@ -27,7 +28,7 @@
         >
           <option value="">-- Select a Challenge --</option>
           <option
-            v-for="c in normalizedChallenges"
+            v-for="c in filteredChallenges"
             :key="c.id"
             :value="c.id"
           >
@@ -36,7 +37,7 @@
         </select>
       </div>
 
-      <!-- Notes / Reflection (only if required) -->
+      <!-- Notes / Reflection -->
       <div v-if="currentChallenge && currentChallenge['Reflection Required?'] === 'Yes'">
         <label class="block mb-1 text-gray-200">Notes / Reflection</label>
         <textarea
@@ -47,7 +48,7 @@
         ></textarea>
       </div>
 
-      <!-- Proof upload (only if required) -->
+      <!-- Proof Upload -->
       <div v-if="currentChallenge && currentChallenge['Picture Required?'] === 'Yes'">
         <label class="block mb-2 text-gray-200">Upload Proof (Image)</label>
 
@@ -90,11 +91,13 @@ export default {
   data() {
     return {
       rawChallenges: [],
+      memberSubmissions: [],
       form: {
         email: "",
         challengeId: "",
         notes: "",
         file: null,
+        fileDataUrl: "",
       },
       currentChallenge: null,
       submitting: false,
@@ -104,7 +107,6 @@ export default {
   },
 
   computed: {
-    // Works whether each record is { id, fields } or { id, ...fields }
     normalizedChallenges() {
       if (!Array.isArray(this.rawChallenges)) return [];
       return this.rawChallenges.map((r) =>
@@ -112,17 +114,14 @@ export default {
       );
     },
 
-    // Selected challenge (normalized)
     selectedChallenge() {
       return this.normalizedChallenges.find((c) => c.id === this.form.challengeId);
     },
 
-    // Alias we can rely on in the template
     currentChallengeSafe() {
       return this.selectedChallenge || null;
     },
 
-    // Disable submit if required fields for this challenge aren’t satisfied
     disableSubmit() {
       const c = this.selectedChallenge;
       if (!c) return true;
@@ -130,13 +129,23 @@ export default {
       if (c["Picture Required?"] === "Yes" && !this.form.file) return true;
       return false;
     },
+
+    // 🔥 Filter out completed challenges unless Repeatable
+    filteredChallenges() {
+      if (!this.form.email) return this.normalizedChallenges;
+
+      const completed = new Set(this.memberSubmissions.map(s => s["Challenge ID"]));
+      return this.normalizedChallenges.filter(c => {
+        if (!completed.has(c.id)) return true; // not done yet
+        return c["Repeatable?"] === "Yes"; // allow repeatable ones
+      });
+    },
   },
 
   methods: {
     async loadChallenges() {
       try {
         const records = await fetchTable("Challenges");
-        // Expecting array; keep raw so we can normalize in computed
         this.rawChallenges = Array.isArray(records) ? records : [];
       } catch (err) {
         console.error("Error fetching challenges:", err);
@@ -144,9 +153,21 @@ export default {
       }
     },
 
+    async loadMemberSubmissions() {
+      if (!this.form.email) return;
+
+      try {
+        const submissions = await fetchTable("Submissions");
+        this.memberSubmissions = submissions.filter(
+          s => s["Member Email"]?.toLowerCase() === this.form.email.toLowerCase()
+        );
+      } catch (err) {
+        console.error("Error fetching submissions:", err);
+      }
+    },
+
     onChallengeChange() {
       this.currentChallenge = this.selectedChallenge || null;
-      // Reset conditional fields when changing challenge
       if (!this.currentChallenge || this.currentChallenge["Reflection Required?"] !== "Yes") {
         this.form.notes = "";
       }
@@ -155,7 +176,6 @@ export default {
       }
     },
 
-    // Convert selected file -> base64 data URL
     handleFileChange(e) {
       const f = e.target.files?.[0] || null;
       this.form.file = f;
@@ -165,7 +185,6 @@ export default {
 
       const reader = new FileReader();
       reader.onload = () => {
-        // result is like "data:image/png;base64,iVBORw0KGgo..."
         this.form.fileDataUrl = reader.result;
       };
       reader.readAsDataURL(f);
@@ -180,24 +199,23 @@ export default {
         let proofUrl = "";
 
         if (this.form.fileDataUrl) {
-   const uploadRes = await fetch("/.netlify/functions/upload-proof", {
-     method: "POST",
-     headers: { "Content-Type": "application/json" },
-     body: JSON.stringify({
-       file: this.form.fileDataUrl,
-       member: this.form.email, // optional if you want to keep it
-       challenge: this.form.challengeId, // optional
-     }),
-   });
+          const uploadRes = await fetch("/.netlify/functions/upload-proof", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              file: this.form.fileDataUrl,
+              member: this.form.email,
+              challenge: this.form.challengeId,
+            }),
+          });
 
-   const uploadJson = await uploadRes.json();
-   if (!uploadRes.ok || !uploadJson.url) {
-     throw new Error(uploadJson.error || "Proof upload failed");
-   }
-   proofUrl = uploadJson.url;
- }
+          const uploadJson = await uploadRes.json();
+          if (!uploadRes.ok || !uploadJson.url) {
+            throw new Error(uploadJson.error || "Proof upload failed");
+          }
+          proofUrl = uploadJson.url;
+        }
 
-        // 2) Submit record to Airtable (backend links email -> Member)
         const res = await fetch("/.netlify/functions/submit-task", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -211,19 +229,18 @@ export default {
         const json = await res.json();
 
         if (!res.ok) {
-          // Friendlier error if the backend couldn't find the member by email
           if (res.status === 404 && json?.error?.toLowerCase().includes("member not found")) {
-            throw new Error("Your email doesn't match the recods. Make sure to use your case email (abc123@case.edu!");
+            throw new Error("Your email doesn't match our records. Use your Case email (abc123@case.edu).");
           }
           throw new Error(json.error || "Submission failed");
         }
 
         this.status = "Challenge submitted successfully! Pending approval.";
-        this.form = { email: "", challengeId: "", notes: "", file: null };
+        this.form = { email: "", challengeId: "", notes: "", file: null, fileDataUrl: "" };
         this.currentChallenge = null;
       } catch (err) {
         console.error("Submit error:", err);
-        this.error = err.message || "Error submitting challenge. Contact NCC if issue persists";
+        this.error = err.message || "Error submitting challenge. Contact NCC if issue persists.";
       } finally {
         this.submitting = false;
       }

@@ -169,17 +169,19 @@ export default {
     },
   },
   methods: {
-    async loadData() {
+    // src/views/Home.vue
+  async loadData() {
   try {
+    // Leaderboard from Members
     this.leaderboard = await fetchTable("Members");
 
-    this.feed = await fetchTable(
-      "Submissions",
-      "filterByFormula=Approved=1&sort[0][field]=Created&sort[0][direction]=desc&maxRecords=10"
-    );
+    // Recent Activity: only Approved submissions
+    this.feed = await fetchTable("Submissions", {
+    filterByFormula: "Approved = 1",
+    sort: [{ field: "Created", direction: "desc" }],
+    maxRecords: 10
+  });
 
-    console.log("Leaderboard:", this.leaderboard);
-    console.log("Feed:", this.feed);
   } catch (err) {
     console.error("Error loading data:", err);
   }

@@ -1,16 +1,29 @@
-export async function fetchTable(table, params = "") {
+// src/api/fetchTables.js
+export async function fetchTable(table, options = {}) {
   try {
-    // ensure params starts with & if it's non-empty
-    const queryString = params
-      ? `&${params.replace(/^\?/, "")}`
-      : "";
+    const params = new URLSearchParams();
 
-    const res = await fetch(`/.netlify/functions/fetch-tables?table=${table}${queryString}`);
+    // Always include the table name
+    params.append("table", table);
+
+    // Supported Airtable options
+    if (options.filterByFormula) {
+      params.append("filterByFormula", options.filterByFormula);
+    }
+    if (options.sort) {
+      // Sort must be JSON stringified for the backend
+      params.append("sort", JSON.stringify(options.sort));
+    }
+    if (options.maxRecords) {
+      params.append("maxRecords", String(options.maxRecords));
+    }
+
+    const res = await fetch(`/.netlify/functions/fetch-tables?${params.toString()}`);
     if (!res.ok) {
       throw new Error(`Error fetching ${table}: ${res.statusText}`);
     }
-    const data = await res.json();
-    return data;
+
+    return await res.json();
   } catch (err) {
     console.error("fetchTable error:", err);
     throw err;
