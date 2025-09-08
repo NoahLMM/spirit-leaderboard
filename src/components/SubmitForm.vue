@@ -11,7 +11,7 @@
           v-model="form.email"
           type="email"
           required
-          placeholder="example@school.edu"
+          placeholder="abc123@case.edu"
           class="w-full p-3 text-white placeholder-gray-400 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -213,7 +213,7 @@ export default {
         if (!res.ok) {
           // Friendlier error if the backend couldn't find the member by email
           if (res.status === 404 && json?.error?.toLowerCase().includes("member not found")) {
-            throw new Error("We couldn’t find your email in Members. Please check spelling or contact an admin.");
+            throw new Error("Your email doesn't match the recods. Make sure to use your case email (abc123@case.edu!");
           }
           throw new Error(json.error || "Submission failed");
         }
@@ -223,7 +223,7 @@ export default {
         this.currentChallenge = null;
       } catch (err) {
         console.error("Submit error:", err);
-        this.error = err.message || "Error submitting challenge.";
+        this.error = err.message || "Error submitting challenge. Contact NCC if issue persists";
       } finally {
         this.submitting = false;
       }
