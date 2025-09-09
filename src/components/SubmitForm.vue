@@ -89,6 +89,19 @@
           class="w-full p-3 text-white placeholder-gray-400 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows="4"
         ></textarea>
+
+        <!-- NEW: Ask if they want to share reflection -->
+        <div class="flex items-center mt-2 space-x-2">
+          <input
+            id="share-reflection"
+            type="checkbox"
+            v-model="form.shareReflection"
+            class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+          />
+          <label for="share-reflection" class="text-sm text-gray-300">
+            Share my reflection on the public board
+          </label>
+        </div>
       </div>
 
       <!-- Proof Upload -->
@@ -212,6 +225,7 @@ export default {
         notes: "",
         file: null,
         fileDataUrl: "",
+        shareReflection: false,
       },
       currentChallenge: null,
       submitting: false,
@@ -492,6 +506,7 @@ export default {
             challengeId: this.form.challengeId,
             notes: this.form.notes,
             proofUrl,
+            shareReflection: this.form.shareReflection ? "Yes" : "No",
           }),
         });
 

@@ -10,7 +10,7 @@ export const handler = async (event) => {
     }
 
     const data = JSON.parse(event.body);
-    const { email, challengeId, notes, proofUrl } = data;
+    const { email, challengeId, notes, proofUrl, shareReflection } = data;
 
     // 1. Look up member by email
     const members = await base("Members")
@@ -37,6 +37,7 @@ export const handler = async (event) => {
           Challenge: [challengeId], // assuming Challenge is a linked field too
           Notes: notes || "",
           Proof: proofUrl ? [{ url: proofUrl }] : [],
+          "Share Reflection?": shareReflection || "No",
         },
       },
     ]);

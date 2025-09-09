@@ -109,13 +109,19 @@
             </div>
 
             <p class="mb-2 text-sm text-gray-300">
-              <span class="font-semibold text-blue-400">{{ entry.fields?.['Challenge Name'] || 'Unknown Challenge' }}</span>
-              — {{ entry.fields?.Notes || '' }}
+              <span class="font-semibold text-blue-400">
+                {{ entry.fields?.['Challenge Name'] || 'Unknown Challenge' }}
+              </span>
+              <template v-if="shouldShowReflection(entry) && entry.fields?.Notes">
+                — {{ entry.fields.Notes }}
+              </template>
             </p>
 
             <div class="flex items-center justify-between mb-2 text-sm text-gray-400">
               <span>Team: {{ entry.fields?.['Team Name'] || 'No Team' }}</span>
-              <span class="font-semibold text-blue-400">{{ entry.fields?.Points || 0 }} pts</span>
+              <span class="font-semibold text-blue-400">
+                {{ (Array.isArray(entry.fields?.Points) ? entry.fields.Points[0] : entry.fields?.Points) || 0 }} pts
+              </span>
             </div>
 
             <div v-if="entry.fields?.Proof && entry.fields.Proof[0]" class="mt-2">
@@ -135,11 +141,22 @@
 <script>
 import { fetchTable } from "../api/fetchTables";
 
+// Robust truthy check for Airtable fields (Yes/No single select, checkbox, number)
+function toBool(v) {
+  if (Array.isArray(v)) v = v[0];
+  if (v == null) return false;
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return ["yes", "y", "true", "1", "checked"].includes(s);
+}
+
 export default {
   data() {
     return {
       leaderboard: [],
       feed: [],
+      loading: false,
     };
   },
   computed: {
@@ -169,23 +186,28 @@ export default {
     },
   },
   methods: {
-    // src/views/Home.vue
-  async loadData() {
-  try {
-    // Leaderboard from Members
-    this.leaderboard = await fetchTable("Members");
+    async loadData() {
+      try {
+        this.loading = true;
+        // Leaderboard from Members
+        this.leaderboard = await fetchTable("Members");
 
-    // Recent Activity: only Approved submissions
-    this.feed = await fetchTable("Submissions", {
-    filterByFormula: "Approved = 1",
-    sort: [{ field: "Created", direction: "desc" }],
-    maxRecords: 10
-  });
-
-  } catch (err) {
-    console.error("Error loading data:", err);
-  }
-},
+        // Recent Activity: only Approved submissions
+        this.feed = await fetchTable("Submissions", {
+          filterByFormula: "Approved = 1",
+          sort: [{ field: "Created", direction: "desc" }],
+          maxRecords: 10
+        });
+      } catch (err) {
+        console.error("Error loading data:", err);
+      } finally {
+        this.loading = false;
+      }
+    },
+    shouldShowReflection(entry) {
+      const share = entry?.fields?.["Share Reflection?"];
+      return toBool(share);
+    },
     formatDate(isoString) {
       if (!isoString) return "No date";
       const date = new Date(isoString);
@@ -203,4 +225,3 @@ export default {
   },
 };
 </script>
-
