@@ -17,7 +17,6 @@
             @blur="loadMemberSubmissions"
             :disabled="loadingMember || submitting"
           />
-          <!-- Inline spinner while validating email / fetching submissions -->
           <div
             v-if="loadingMember"
             class="absolute inset-y-0 flex items-center right-3"
@@ -133,6 +132,47 @@
       <p v-if="status" class="text-green-400">{{ status }}</p>
       <p v-if="error" class="text-red-400">{{ error }}</p>
     </form>
+
+    <!-- Success Modal -->
+    <transition name="fade">
+      <div
+        v-if="showSuccessModal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+        @keyup.esc="closeSuccessModal"
+        tabindex="0"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div class="absolute inset-0 bg-black/60" @click="closeSuccessModal" />
+        <div class="relative z-10 w-full max-w-md p-6 bg-gray-800 shadow-2xl rounded-2xl ring-1 ring-white/10">
+          <div class="flex items-start justify-between">
+            <div>
+              <h3 class="text-2xl font-bold text-white">Success!</h3>
+              <p class="mt-1 text-gray-300">The NCC will review your submission.</p>
+            </div>
+            <button
+              type="button"
+              class="p-2 -mr-2 text-gray-300 rounded-md hover:bg-gray-700/60 hover:text-white"
+              @click="closeSuccessModal"
+              aria-label="Close"
+            >
+              <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="mt-6">
+            <button
+              type="button"
+              class="inline-flex items-center justify-center w-full px-4 py-2 font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              @click="closeSuccessModal"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -141,7 +181,6 @@ import { fetchTable } from "../api/fetchTables";
 
 const DEBUG = false;
 
-// Normalize "Yes"/"No", true/false, 1/0, arrays, etc.
 function toBool(v) {
   if (Array.isArray(v)) v = v[0];
   if (v == null) return false;
@@ -154,20 +193,19 @@ function toBool(v) {
 export default {
   data() {
     return {
-      // data
       rawChallenges: [],
       memberSubmissions: [],
-      teamSubmissions: [],      // team-wide submissions
-      memberTeamNames: [],      // array of team names for this user
+      teamSubmissions: [],
+      memberTeamNames: [],
       validMember: false,
       emailChecked: false,
       memberName: "",
 
-      // loading flags
       loadingMember: false,
       loadingChallenges: false,
 
-      // form + ui
+      showSuccessModal: false,
+
       form: {
         email: "",
         challengeId: "",
@@ -185,12 +223,9 @@ export default {
   computed: {
     normalizedChallenges() {
       if (!Array.isArray(this.rawChallenges)) return [];
-      return this.rawChallenges.map((r) =>
-        r?.fields ? { id: r.id, ...r.fields } : r
-      );
+      return this.rawChallenges.map((r) => (r?.fields ? { id: r.id, ...r.fields } : r));
     },
 
-    // Only ACTIVE challenges
     activeChallenges() {
       return this.normalizedChallenges.filter((c) => this.isActive(c));
     },
@@ -207,30 +242,24 @@ export default {
       return false;
     },
 
-    // Final dropdown list:
-    // - Only ACTIVE challenges
-    // - Remove any challenge the member (or their team, if Team?=Yes) has already done
-    // - Unless Repeatable? is true/Yes
     filteredChallenges() {
       if (!this.emailChecked || !this.validMember) return [];
 
-      // If the user truly has no submissions (and no team submissions), just show all active
-      if (this.memberSubmissions.length === 0 && this.teamSubmissions.length === 0) {
-        if (DEBUG) console.log("[DBG] No submissions found → show all active challenges");
-        return this.activeChallenges;
-      }
+      // If fetches failed and came back empty, do NOT auto-show everything.
+      // Only show all when the member truly has zero submissions *and* we successfully looked them up.
+      // We assume lookup success when emailChecked && validMember are true.
+      const hasAnySubs = this.memberSubmissions.length > 0 || this.teamSubmissions.length > 0;
 
       const completedByMember = new Set();
-      this.memberSubmissions.forEach((s) => {
-        this.extractChallengeIds(s).forEach((id) => completedByMember.add(id));
-      });
+      this.memberSubmissions.forEach((s) => this.extractChallengeIds(s).forEach((id) => completedByMember.add(id)));
 
       const completedByTeam = new Set();
-      this.teamSubmissions.forEach((s) => {
-        this.extractChallengeIds(s).forEach((id) => completedByTeam.add(id));
-      });
+      this.teamSubmissions.forEach((s) => this.extractChallengeIds(s).forEach((id) => completedByTeam.add(id)));
 
       if (DEBUG) {
+        console.log("[DBG] hasAnySubs:", hasAnySubs);
+        console.log("[DBG] memberSubmissions:", this.memberSubmissions);
+        console.log("[DBG] teamSubmissions:", this.teamSubmissions);
         console.log("[DBG] completedByMember:", Array.from(completedByMember));
         console.log("[DBG] completedByTeam:", Array.from(completedByTeam));
       }
@@ -263,7 +292,6 @@ export default {
   },
 
   methods: {
-    // Active check: ONLY the "Is Active" field (per your base)
     isActive(challenge) {
       const raw = challenge?.["Is Active"];
       return toBool(raw);
@@ -285,9 +313,6 @@ export default {
     async loadChallenges() {
       try {
         this.loadingChallenges = true;
-
-        // ✅ Filter by ONLY the existing field name: "Is Active"
-        // Works for checkbox booleans or "Yes"/"No" text
         const filterByFormula = [
           "OR(",
           " {Is Active} = TRUE(),",
@@ -295,7 +320,6 @@ export default {
           ' LOWER({Is Active} & "") = "yes"',
           ")",
         ].join("");
-
         const records = await fetchTable("Challenges", { filterByFormula });
         this.rawChallenges = Array.isArray(records) ? records : [];
       } catch (err) {
@@ -306,13 +330,25 @@ export default {
       }
     },
 
-    /**
-     * Flow:
-     *  - Find Member by email (case-insensitive)
-     *  - Capture member Name and their Team Name(s) (usually lookup -> array)
-     *  - Fetch submissions linked to this Member record ID
-     *  - Fetch submissions for ANY of the member's team names (team-wide lockout for Team? challenges)
-     */
+    // Batch-fetch submissions by record IDs from the Member row
+    async fetchSubmissionsByIds(ids = []) {
+      if (!ids.length) return [];
+      const chunks = (arr, size) => {
+        const out = [];
+        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+        return out;
+      };
+      const groups = chunks(ids, 50);
+      const acc = [];
+      for (const group of groups) {
+        const orParts = group.map((id) => `RECORD_ID() = "${String(id).replace(/"/g, '\\"')}"`);
+        const formula = `OR(${orParts.join(",")})`;
+        const res = await fetchTable("Submissions", { filterByFormula: formula, maxRecords: 50 });
+        if (Array.isArray(res)) acc.push(...res);
+      }
+      return acc;
+    },
+
     async loadMemberSubmissions() {
       this.loadingMember = true;
       this.emailChecked = false;
@@ -339,7 +375,7 @@ export default {
       }
 
       try {
-        // 1) Member lookup
+        // 1) Member lookup (case-insensitive)
         const members = await fetchTable("Members", {
           filterByFormula: `LOWER({Email}) = LOWER("${email.replace(/"/g, '\\"')}")`,
           maxRecords: 1,
@@ -356,14 +392,13 @@ export default {
         this.memberName = member.fields?.Name || "";
         this.validMember = true;
 
-        // 2) Member submissions (by linked Member record ID)
-        const submissions = await fetchTable("Submissions", {
-          filterByFormula: `FIND("${memberId}", ARRAYJOIN({Member}))`,
-          maxRecords: 200,
-        });
-        this.memberSubmissions = Array.isArray(submissions) ? submissions : [];
+        // 2) Get the member's linked submission IDs directly from the Member row
+        const linkedIds =
+          Array.isArray(member.fields?.Submissions) ? member.fields.Submissions : [];
+        // 3) Fetch those submissions by ID
+        this.memberSubmissions = await this.fetchSubmissionsByIds(linkedIds);
 
-        // 3) Team submissions (match by Team Name string(s))
+        // 4) Team submissions: by team name(s)
         const teamNames =
           Array.isArray(member.fields?.["Team Name"])
             ? member.fields["Team Name"].filter(Boolean)
@@ -414,12 +449,13 @@ export default {
       this.form.file = f;
       this.form.fileDataUrl = "";
       if (!f) return;
-
       const reader = new FileReader();
-      reader.onload = () => {
-        this.form.fileDataUrl = reader.result; // data URL
-      };
+      reader.onload = () => { this.form.fileDataUrl = reader.result; };
       reader.readAsDataURL(f);
+    },
+
+    closeSuccessModal() {
+      this.showSuccessModal = false;
     },
 
     async handleSubmit() {
@@ -468,6 +504,7 @@ export default {
           throw new Error(json.error || "Submission failed");
         }
 
+        this.showSuccessModal = true;
         this.status = "Challenge submitted successfully! Pending approval.";
 
         // Reset form + state
@@ -492,3 +529,8 @@ export default {
   },
 };
 </script>
+
+<style>
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
