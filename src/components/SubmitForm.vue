@@ -33,6 +33,12 @@
           Please enter a valid, known Case email.
         </p>
       </div>
+      
+      <!-- Greeting -->
+      <p v-if="emailChecked && validMember && memberName"
+        class="mt-2 text-lg font-semibold text-blue-300">
+        Hello, {{ memberName }}. Ready to submit some challenges?
+      </p>
 
       <!-- Challenge dropdown OR empty-state -->
       <div v-if="showDropdown">
@@ -140,13 +146,10 @@ export default {
   data() {
     return {
       rawChallenges: [],
-      memberSubmissions: [],   // this member's submissions
-      teamSubmissions: [],     // submissions by anyone on the member's team
-      memberTeamNames: [],     // team names from Members row (lookup)
+      memberSubmissions: [],
       validMember: false,
       emailChecked: false,
-      loadingChallenges: false,
-      loadingMember: false,
+      memberName: "",   // 👈 NEW
       form: {
         email: "",
         challengeId: "",
@@ -160,6 +163,7 @@ export default {
       error: "",
     };
   },
+
 
   computed: {
     normalizedChallenges() {
@@ -285,94 +289,57 @@ export default {
      *  - Fetch all submissions for the member's Team by MATCHING TEAM NAME (not ID)
      */
     async loadMemberSubmissions() {
-      this.emailChecked = false;
+  this.emailChecked = false;
+  this.validMember = false;
+  this.memberName = "";   // reset
+
+  const raw = (this.form.email || "").trim();
+  if (!raw) return;
+
+  const email = raw.toLowerCase();
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!isEmail) {
+    this.memberSubmissions = [];
+    this.emailChecked = true;
+    this.validMember = false;
+    this.error = "Please enter a valid email address.";
+    return;
+  }
+
+  try {
+    const members = await fetchTable("Members", {
+      filterByFormula: `LOWER({Email}) = LOWER("${email.replace(/"/g, '\\"')}")`,
+      maxRecords: 1,
+    });
+
+    if (!Array.isArray(members) || members.length === 0) {
+      this.memberSubmissions = [];
+      this.emailChecked = true;
       this.validMember = false;
+      return;
+    }
 
-      const raw = (this.form.email || "").trim();
-      if (!raw) return;
+    const member = members[0];
+    const memberId = member.id;
+    this.memberName = member.fields?.Name || "";  // 👈 Grab the Name
+    this.validMember = true;
 
-      const email = raw.toLowerCase();
-      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-      if (!isEmail) {
-        this.memberSubmissions = [];
-        this.teamSubmissions = [];
-        this.memberTeamNames = [];
-        this.emailChecked = true;
-        this.validMember = false;
-        this.error = "Please enter a valid email address.";
-        return;
-      }
+    const submissions = await fetchTable("Submissions", {
+      filterByFormula: `FIND("${memberId}", ARRAYJOIN({Member}))`,
+      maxRecords: 200,
+    });
 
-      this.loadingMember = true;
-      try {
-        // 1) Member lookup by email
-        const members = await fetchTable("Members", {
-          filterByFormula: `LOWER({Email}) = LOWER("${email.replace(/"/g, '\\"')}")`,
-          maxRecords: 1,
-        });
+    this.memberSubmissions = Array.isArray(submissions) ? submissions : [];
+    this.emailChecked = true;
+  } catch (err) {
+    console.error("Error fetching submissions:", err);
+    this.memberSubmissions = [];
+    this.emailChecked = true;
+    this.validMember = false;
+    this.error = "Something went wrong validating your email. Please try again.";
+  }
+},
 
-        if (!Array.isArray(members) || members.length === 0) {
-          this.memberSubmissions = [];
-          this.teamSubmissions = [];
-          this.memberTeamNames = [];
-          this.emailChecked = true;
-          this.validMember = false;
-          return;
-        }
-
-        const member = members[0]; // { id, fields }
-        const linkedSubmissionIds = Array.isArray(member.fields?.Submissions)
-          ? member.fields.Submissions
-          : [];
-        // Team names from Members (lookup). Samples showed ["Mistletoe"] etc.
-        const teamNamesRaw = member.fields?.["Team Name"];
-        this.memberTeamNames = Array.isArray(teamNamesRaw)
-          ? teamNamesRaw.filter(Boolean)
-          : (teamNamesRaw ? [teamNamesRaw] : []);
-
-        this.validMember = true;
-
-        // 2) Fetch the member's Submission records by ID
-        const submissions = await this.fetchSubmissionsByIds(linkedSubmissionIds);
-        this.memberSubmissions = Array.isArray(submissions) ? submissions : [];
-
-        // 3) Fetch all submissions for the member's Team(s) by NAME
-        //    NOTE: in Airtable, ARRAYJOIN({Team Name}) contains the names, not IDs.
-        //    We'll build an OR() of LOWER({Team Name}) = LOWER("name") to be robust.
-        let teamSubs = [];
-        if (this.memberTeamNames.length) {
-          const orParts = this.memberTeamNames.map((n) =>
-            `LOWER({Team Name}) = LOWER("${String(n).replace(/"/g, '\\"')}")`
-          );
-          const formula =
-            orParts.length === 1 ? orParts[0] : `OR(${orParts.join(",")})`;
-
-          if (DEBUG) console.log("[DBG] team formula:", formula);
-
-          const res = await fetchTable("Submissions", { filterByFormula: formula });
-          teamSubs = Array.isArray(res) ? res : [];
-        }
-        this.teamSubmissions = teamSubs;
-
-        if (DEBUG) {
-          console.log("[DBG] memberSubmissions:", this.memberSubmissions.length);
-          console.log("[DBG] teamSubmissions:", this.teamSubmissions.length);
-          console.log("[DBG] teamNames:", this.memberTeamNames);
-        }
-
-        this.emailChecked = true;
-      } catch (err) {
-        console.error("Error fetching submissions:", err);
-        this.memberSubmissions = [];
-        this.teamSubmissions = [];
-        this.memberTeamNames = [];
-        this.emailChecked = true;
-        this.validMember = false;
-        this.error = "Something went wrong validating your email. Please try again.";
-      } finally {
-        this.loadingMember = false;
-      }
-    },
 
     onChallengeChange() {
       this.currentChallenge = this.selectedChallenge || null;

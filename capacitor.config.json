@@ -1,5 +1,8 @@
 {
-  "appId": "com.cwrurha.spiritchallenge",
-  "appName": "spirit-leaderboard",
-  "webDir": "dist"
+  "appId": "com.yourorg.rha",
+  "appName": "RHA Spirit Challenge",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
 }
