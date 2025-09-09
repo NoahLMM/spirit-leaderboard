@@ -5,6 +5,7 @@
       <div class="space-x-4">
         <router-link to="/" class="hover:underline">Home</router-link>
         <router-link to="/submit" class="hover:underline">Submit</router-link>
+        <router-link to="/challenges" class="hover:underline">Challenges</router-link>
       </div>
     </nav>
 

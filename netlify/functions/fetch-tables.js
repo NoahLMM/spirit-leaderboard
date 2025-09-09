@@ -2,48 +2,39 @@ import Airtable from "airtable";
 
 export const handler = async (event) => {
   try {
-    const { table, filter, sort, maxRecords } = event.queryStringParameters || {};
+    const qs = event.queryStringParameters || {};
 
+    const table = qs.table;
     if (!table) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Missing table parameter" }),
-      };
+      return { statusCode: 400, body: JSON.stringify({ error: "Missing table parameter" }) };
     }
 
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
       .base(process.env.AIRTABLE_BASE_ID);
 
-    let queryOptions = {};
-    if (filter) queryOptions.filterByFormula = decodeURIComponent(filter);
-    if (sort) {
-      try {
-        queryOptions.sort = JSON.parse(sort);
-      } catch (e) {
-        console.warn("Invalid sort param:", sort);
-      }
-    }
-    if (maxRecords) queryOptions.maxRecords = parseInt(maxRecords, 10);
+    // Accept EITHER ?filter=... OR ?filterByFormula=...
+    // (Netlify already gives us decoded values in queryStringParameters)
+    const filter = qs.filter ?? qs.filterByFormula;
 
-    console.log("Fetching from table:", table, "with options:", queryOptions);
+    let queryOptions = {};
+    if (filter) queryOptions.filterByFormula = filter;
+
+    if (qs.sort) {
+      try { queryOptions.sort = JSON.parse(qs.sort); }
+      catch { console.warn("Invalid sort param:", qs.sort); }
+    }
+    if (qs.maxRecords) queryOptions.maxRecords = parseInt(qs.maxRecords, 10);
+
+    console.log("Fetching", table, "with options:", queryOptions);
 
     const records = await base(table).select(queryOptions).all();
 
-    // Return in the old shape: fields inside "fields"
-    const data = records.map((rec) => ({
-      id: rec.id,
-      fields: rec.fields,
-    }));
+    // Preserve your existing shape: { id, fields }
+    const data = records.map((rec) => ({ id: rec.id, fields: rec.fields }));
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify(data),
-    };
+    return { statusCode: 200, body: JSON.stringify(data) };
   } catch (err) {
     console.error("Function Error:", err);
-    return {
-      statusCode: err.statusCode || 500,
-      body: JSON.stringify({ error: err.message }),
-    };
+    return { statusCode: err.statusCode || 500, body: JSON.stringify({ error: err.message }) };
   }
 };
