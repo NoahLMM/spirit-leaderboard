@@ -33,10 +33,10 @@
           Please enter a valid, known Case email.
         </p>
       </div>
-      
+
       <!-- Greeting -->
       <p v-if="emailChecked && validMember && memberName"
-        class="mt-2 text-lg font-semibold text-blue-300">
+         class="mt-2 text-lg font-semibold text-blue-300">
         Hello, {{ memberName }}. Ready to submit some challenges?
       </p>
 
@@ -62,8 +62,7 @@
         >
           <option value="">-- Select a Challenge --</option>
           <option v-for="c in filteredChallenges" :key="c.id" :value="c.id">
-            {{ c['Challenge Name'] || 'Unnamed Challenge' }}
-            <span v-if="isTeamChallenge(c)"> (Team)</span>
+            {{ c['Challenge Name'] || 'Unnamed Challenge' }}<span v-if="isTeamChallenge(c)"> (Team)</span>
           </option>
         </select>
       </div>
@@ -140,16 +139,35 @@
 <script>
 import { fetchTable } from "../api/fetchTables";
 
-const DEBUG = false; // set true to see logs
+const DEBUG = false;
+
+// Normalize "Yes"/"No", true/false, 1/0, arrays, etc.
+function toBool(v) {
+  if (Array.isArray(v)) v = v[0];
+  if (v == null) return false;
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v === 1;
+  const s = String(v).trim().toLowerCase();
+  return ["yes", "y", "true", "1"].includes(s);
+}
 
 export default {
   data() {
     return {
+      // data
       rawChallenges: [],
       memberSubmissions: [],
+      teamSubmissions: [],      // team-wide submissions
+      memberTeamNames: [],      // array of team names for this user
       validMember: false,
       emailChecked: false,
-      memberName: "",   // 👈 NEW
+      memberName: "",
+
+      // loading flags
+      loadingMember: false,
+      loadingChallenges: false,
+
+      // form + ui
       form: {
         email: "",
         challengeId: "",
@@ -164,7 +182,6 @@ export default {
     };
   },
 
-
   computed: {
     normalizedChallenges() {
       if (!Array.isArray(this.rawChallenges)) return [];
@@ -173,8 +190,13 @@ export default {
       );
     },
 
+    // Only ACTIVE challenges
+    activeChallenges() {
+      return this.normalizedChallenges.filter((c) => this.isActive(c));
+    },
+
     selectedChallenge() {
-      return this.normalizedChallenges.find((c) => c.id === this.form.challengeId);
+      return this.activeChallenges.find((c) => c.id === this.form.challengeId);
     },
 
     disableSubmit() {
@@ -185,8 +207,18 @@ export default {
       return false;
     },
 
+    // Final dropdown list:
+    // - Only ACTIVE challenges
+    // - Remove any challenge the member (or their team, if Team?=Yes) has already done
+    // - Unless Repeatable? is true/Yes
     filteredChallenges() {
       if (!this.emailChecked || !this.validMember) return [];
+
+      // If the user truly has no submissions (and no team submissions), just show all active
+      if (this.memberSubmissions.length === 0 && this.teamSubmissions.length === 0) {
+        if (DEBUG) console.log("[DBG] No submissions found → show all active challenges");
+        return this.activeChallenges;
+      }
 
       const completedByMember = new Set();
       this.memberSubmissions.forEach((s) => {
@@ -203,8 +235,8 @@ export default {
         console.log("[DBG] completedByTeam:", Array.from(completedByTeam));
       }
 
-      return this.normalizedChallenges.filter((c) => {
-        const repeatable = c["Repeatable?"] === "Yes" || c["Repeatable?"] === true;
+      return this.activeChallenges.filter((c) => {
+        const repeatable = toBool(c["Repeatable?"]);
         const isTeam = this.isTeamChallenge(c);
         const done = isTeam ? completedByTeam.has(c.id) : completedByMember.has(c.id);
         return !done || repeatable;
@@ -231,9 +263,15 @@ export default {
   },
 
   methods: {
+    // Active check: ONLY the "Is Active" field (per your base)
+    isActive(challenge) {
+      const raw = challenge?.["Is Active"];
+      return toBool(raw);
+    },
+
     isTeamChallenge(challenge) {
       const v = challenge?.["Team?"];
-      return v === "Yes" || v === true || v === 1;
+      return toBool(v);
     },
 
     extractChallengeIds(submission) {
@@ -247,7 +285,18 @@ export default {
     async loadChallenges() {
       try {
         this.loadingChallenges = true;
-        const records = await fetchTable("Challenges");
+
+        // ✅ Filter by ONLY the existing field name: "Is Active"
+        // Works for checkbox booleans or "Yes"/"No" text
+        const filterByFormula = [
+          "OR(",
+          " {Is Active} = TRUE(),",
+          " {Is Active} = 1,",
+          ' LOWER({Is Active} & "") = "yes"',
+          ")",
+        ].join("");
+
+        const records = await fetchTable("Challenges", { filterByFormula });
         this.rawChallenges = Array.isArray(records) ? records : [];
       } catch (err) {
         console.error("Error fetching challenges:", err);
@@ -257,89 +306,97 @@ export default {
       }
     },
 
-    // Utility: fetch Submission records by record IDs (batched)
-    async fetchSubmissionsByIds(ids = []) {
-      if (!ids.length) return [];
-
-      const chunk = (arr, size) => {
-        const out = [];
-        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-        return out;
-      };
-
-      const batches = chunk(ids, 50);
-      const results = [];
-
-      for (const group of batches) {
-        const orParts = group.map((id) => `RECORD_ID() = "${id.replace(/"/g, '\\"')}"`);
-        const formula = `OR(${orParts.join(",")})`;
-        const res = await fetchTable("Submissions", { filterByFormula: formula });
-        if (Array.isArray(res)) results.push(...res);
-      }
-
-      return results;
-    },
-
     /**
      * Flow:
      *  - Find Member by email (case-insensitive)
-     *  - Read that member row's linked "Submissions" (IDs)
-     *  - Read that member row's "Team Name" (lookup text, usually array)
-     *  - Fetch those Submission records by ID (memberSubmissions)
-     *  - Fetch all submissions for the member's Team by MATCHING TEAM NAME (not ID)
+     *  - Capture member Name and their Team Name(s) (usually lookup -> array)
+     *  - Fetch submissions linked to this Member record ID
+     *  - Fetch submissions for ANY of the member's team names (team-wide lockout for Team? challenges)
      */
     async loadMemberSubmissions() {
-  this.emailChecked = false;
-  this.validMember = false;
-  this.memberName = "";   // reset
-
-  const raw = (this.form.email || "").trim();
-  if (!raw) return;
-
-  const email = raw.toLowerCase();
-  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  if (!isEmail) {
-    this.memberSubmissions = [];
-    this.emailChecked = true;
-    this.validMember = false;
-    this.error = "Please enter a valid email address.";
-    return;
-  }
-
-  try {
-    const members = await fetchTable("Members", {
-      filterByFormula: `LOWER({Email}) = LOWER("${email.replace(/"/g, '\\"')}")`,
-      maxRecords: 1,
-    });
-
-    if (!Array.isArray(members) || members.length === 0) {
-      this.memberSubmissions = [];
-      this.emailChecked = true;
+      this.loadingMember = true;
+      this.emailChecked = false;
       this.validMember = false;
-      return;
-    }
+      this.memberName = "";
+      this.memberSubmissions = [];
+      this.teamSubmissions = [];
+      this.memberTeamNames = [];
 
-    const member = members[0];
-    const memberId = member.id;
-    this.memberName = member.fields?.Name || "";  // 👈 Grab the Name
-    this.validMember = true;
+      const raw = (this.form.email || "").trim();
+      if (!raw) {
+        this.loadingMember = false;
+        return;
+      }
 
-    const submissions = await fetchTable("Submissions", {
-      filterByFormula: `FIND("${memberId}", ARRAYJOIN({Member}))`,
-      maxRecords: 200,
-    });
+      const email = raw.toLowerCase();
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!isEmail) {
+        this.emailChecked = true;
+        this.validMember = false;
+        this.error = "Please enter a valid email address.";
+        this.loadingMember = false;
+        return;
+      }
 
-    this.memberSubmissions = Array.isArray(submissions) ? submissions : [];
-    this.emailChecked = true;
-  } catch (err) {
-    console.error("Error fetching submissions:", err);
-    this.memberSubmissions = [];
-    this.emailChecked = true;
-    this.validMember = false;
-    this.error = "Something went wrong validating your email. Please try again.";
-  }
-},
+      try {
+        // 1) Member lookup
+        const members = await fetchTable("Members", {
+          filterByFormula: `LOWER({Email}) = LOWER("${email.replace(/"/g, '\\"')}")`,
+          maxRecords: 1,
+        });
 
+        if (!Array.isArray(members) || members.length === 0) {
+          this.emailChecked = true;
+          this.validMember = false;
+          return;
+        }
+
+        const member = members[0];
+        const memberId = member.id;
+        this.memberName = member.fields?.Name || "";
+        this.validMember = true;
+
+        // 2) Member submissions (by linked Member record ID)
+        const submissions = await fetchTable("Submissions", {
+          filterByFormula: `FIND("${memberId}", ARRAYJOIN({Member}))`,
+          maxRecords: 200,
+        });
+        this.memberSubmissions = Array.isArray(submissions) ? submissions : [];
+
+        // 3) Team submissions (match by Team Name string(s))
+        const teamNames =
+          Array.isArray(member.fields?.["Team Name"])
+            ? member.fields["Team Name"].filter(Boolean)
+            : (member.fields?.["Team Name"] ? [member.fields["Team Name"]] : []);
+
+        this.memberTeamNames = teamNames;
+
+        if (teamNames.length > 0) {
+          const parts = teamNames.map(
+            (tn) => `LOWER({Team Name} & "") = LOWER("${String(tn).replace(/"/g, '\\"')}")`
+          );
+          const teamFormula = `OR(${parts.join(",")})`;
+
+          const teamRes = await fetchTable("Submissions", {
+            filterByFormula: teamFormula,
+            maxRecords: 500,
+          });
+          this.teamSubmissions = Array.isArray(teamRes) ? teamRes : [];
+        }
+
+        this.emailChecked = true;
+      } catch (err) {
+        console.error("Error fetching submissions:", err);
+        this.memberSubmissions = [];
+        this.teamSubmissions = [];
+        this.memberTeamNames = [];
+        this.emailChecked = true;
+        this.validMember = false;
+        this.error = "Something went wrong validating your email. Please try again.";
+      } finally {
+        this.loadingMember = false;
+      }
+    },
 
     onChallengeChange() {
       this.currentChallenge = this.selectedChallenge || null;
@@ -360,7 +417,7 @@ export default {
 
       const reader = new FileReader();
       reader.onload = () => {
-        this.form.fileDataUrl = reader.result;
+        this.form.fileDataUrl = reader.result; // data URL
       };
       reader.readAsDataURL(f);
     },
