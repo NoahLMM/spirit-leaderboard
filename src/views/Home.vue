@@ -2,7 +2,7 @@
   <div class="min-h-screen p-6 text-gray-100 bg-gray-900">
     <div class="max-w-5xl mx-auto">
       <h1 class="mb-8 text-4xl font-extrabold text-center text-white">
-        RHA Spirit Challenge!
+        RHA Clash of Councils
       </h1>
 
       <!-- Individual Leaderboard -->
