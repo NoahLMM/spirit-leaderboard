@@ -54,9 +54,10 @@
                 <th class="px-4 py-3">Name</th>
                 <th class="px-4 py-3">Description</th>
                 <th class="px-4 py-3">Points</th>
+                <th class="px-4 py-3">End Date</th> <!-- NEW -->
                 <th class="px-4 py-3">Picture?</th>
                 <th class="px-4 py-3">Reflection?</th>
-                <th class="px-4 py-3">Team?</th>
+                <th class="px-4 py-3">Council-wide?</th>
                 <th class="px-4 py-3">Repeatable?</th>
               </tr>
             </thead>
@@ -70,6 +71,9 @@
                 </td>
                 <td class="px-4 py-3 text-blue-300">
                   {{ pointsValue(c) }}
+                </td>
+                <td class="px-4 py-3 text-gray-300"> <!-- NEW -->
+                  {{ endDateDisplay(c) }}
                 </td>
                 <td class="px-4 py-3">
                   <span :class="badgeClass(c['Picture Required?'])" class="inline-flex items-center px-2 py-0.5 rounded border text-xs">
@@ -108,6 +112,9 @@
               {{ pointsValue(c) }} pts
             </span>
           </div>
+          <p class="mt-1 text-sm text-gray-400"> <!-- NEW -->
+            Due: <span class="text-gray-200">{{ endDateDisplay(c) }}</span>
+          </p>
           <p class="mt-2 text-gray-200 whitespace-pre-wrap">
             {{ c.Description || '—' }}
           </p>
@@ -235,6 +242,45 @@ export default {
       if (Array.isArray(v)) return Number(v[0]) || 0;
       return Number(v) || 0;
     },
+
+    // --- NEW: End Date helpers ---
+    endDateRaw(c) {
+      // Prefer "End Date", but be resilient to alternative field spellings
+      return c["End Date"] ?? c.EndDate ?? c["EndDate"] ?? null;
+    },
+    endDateDisplay(c) {
+      const raw = this.endDateRaw(c);
+      if (!raw) return "—";
+      // Airtable may send ISO strings or user-entered strings; format both nicely
+      const d = this.parseDateLoose(raw);
+      return d ? this.formatDate(d) : String(raw);
+    },
+    parseDateLoose(v) {
+      // v may be ISO, or something like "9/24/2025 1:44pm"
+      try {
+        // If array, use first
+        if (Array.isArray(v)) v = v[0];
+        if (typeof v === "number") return new Date(v);
+        const d = new Date(String(v));
+        if (!isNaN(d.getTime())) return d;
+      } catch (_) {}
+      return null;
+    },
+    formatDate(d) {
+      // Friendly format: Sep 24, 2025, 1:44 PM
+      try {
+        return d.toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      } catch {
+        return d.toString();
+      }
+    },
+    // --- /End Date helpers ---
 
     async load() {
       this.loading = true;
