@@ -182,7 +182,7 @@ export default {
         .slice(0, 10);
     },
     recActivity() {
-      return [...this.feed].slice(0, 10);
+      return [...this.feed].slice(0, 100);
     },
   },
   methods: {
@@ -196,7 +196,7 @@ export default {
         this.feed = await fetchTable("Submissions", {
           filterByFormula: "Approved = 1",
           sort: [{ field: "Created", direction: "desc" }],
-          maxRecords: 10
+          maxRecords: 100
         });
       } catch (err) {
         console.error("Error loading data:", err);
