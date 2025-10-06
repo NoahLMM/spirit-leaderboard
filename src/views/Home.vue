@@ -44,7 +44,7 @@
               <div>
                 <p class="text-sm text-gray-400">Total Points</p>
                 <p class="text-lg font-semibold text-blue-400">
-                  {{ player.fields?.['Total Points'] || 0 }}
+                  {{ intPoints(player.fields?.['Total Points']) }}
                 </p>
               </div>
             </div>
@@ -120,7 +120,7 @@
             <div class="flex items-center justify-between mb-2 text-sm text-gray-400">
               <span>Team: {{ entry.fields?.['Team Name'] || 'No Team' }}</span>
               <span class="font-semibold text-blue-400">
-                {{ (Array.isArray(entry.fields?.Points) ? entry.fields.Points[0] : entry.fields?.Points) || 0 }} pts
+                {{ intPoints(entry.fields?.Points) }} pts
               </span>
             </div>
 
@@ -151,6 +151,15 @@ function toBool(v) {
   return ["yes", "y", "true", "1", "checked"].includes(s);
 }
 
+// Safely coerce Airtable numbers (or arrays) to whole integers
+function intPoints(val) {
+  const raw = Array.isArray(val) ? val[0] : val;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  // Round to nearest whole to avoid 105.0099999999 artifacts
+  return Math.round(n);
+}
+
 export default {
   data() {
     return {
@@ -162,14 +171,17 @@ export default {
   computed: {
     topPlayers() {
       return [...this.leaderboard]
-        .sort((a, b) => (b.fields?.["Total Points"] || 0) - (a.fields?.["Total Points"] || 0))
+        .sort(
+          (a, b) =>
+            intPoints(b.fields?.["Total Points"]) - intPoints(a.fields?.["Total Points"])
+        )
         .slice(0, 10);
     },
     teamLeaderboard() {
       const teamMap = {};
       this.leaderboard.forEach(player => {
         const team = player.fields?.['Team Name']?.[0] || 'No Team';
-        const points = player.fields?.['Total Points'] || 0;
+        const points = intPoints(player.fields?.['Total Points']);
         const challenges = player.fields?.['NSubmissions'] || 0;
         if (!teamMap[team]) {
           teamMap[team] = { name: team, points: 0, challenges: 0 };
@@ -177,9 +189,9 @@ export default {
         teamMap[team].points += points;
         teamMap[team].challenges += challenges;
       });
-      return Object.values(teamMap)
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 10);
+      // Make sure team points are integers for display
+      const list = Object.values(teamMap).map(t => ({ ...t, points: intPoints(t.points) }));
+      return list.sort((a, b) => b.points - a.points).slice(0, 10);
     },
     recActivity() {
       return [...this.feed].slice(0, 100);
@@ -218,6 +230,8 @@ export default {
         minute: "2-digit",
       });
     },
+    // expose helper to template
+    intPoints,
   },
   mounted() {
     this.loadData();
