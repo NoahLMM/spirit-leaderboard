@@ -18,7 +18,7 @@ export const handler = async (event) => {
     // Prepare upload
     const formData = new FormData();
     formData.append("file", file); 
-    formData.append("upload_preset", "unsigned_upload"); // optional preset OR sign manually
+    formData.append("upload_preset", process.env.CLOUDINARY_UPLOAD_PRESET || "unsigned_upload");
     formData.append("api_key", process.env.CLOUDINARY_API_KEY);
     formData.append("timestamp", Math.floor(Date.now() / 1000));
 

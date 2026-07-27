@@ -2,6 +2,17 @@
   command = "npm run build"
   publish = "dist"   # Vite's output folder
 
+[template.environment]
+  AIRTABLE_API_KEY = "Airtable Personal Access Token"
+  AIRTABLE_BASE_ID = "Airtable base ID (starts with app...) - see docs/airtable-schema.md"
+  CLOUDINARY_API_KEY = "Cloudinary API key"
+  CLOUDINARY_CLOUD_NAME = "Cloudinary cloud name"
+  CLOUDINARY_UPLOAD_PRESET = "Name of your unsigned Cloudinary upload preset (defaults to unsigned_upload)"
+  VITE_SITE_TITLE = "Name shown in the nav bar and browser tab (defaults to Spirit Challenge)"
+  VITE_GROUP_LABEL = "What to call a member's group, e.g. Team/House/Chapter (defaults to Team)"
+  VITE_EMAIL_DOMAIN = "Optional: your org's email domain, used only for placeholder/hint text"
+  VITE_FOOTER_TEXT = "Optional: extra line shown in the footer"
+
 [[redirects]]
   from = "/.netlify/functions/*"
   to = "/.netlify/functions/:splat"

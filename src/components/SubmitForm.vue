@@ -12,7 +12,7 @@
             v-model.trim="form.email"
             type="email"
             required
-            placeholder="abc123@case.edu"
+            :placeholder="emailPlaceholder"
             class="w-full p-3 pr-12 text-white placeholder-gray-400 bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             @blur="loadMemberSubmissions"
             :disabled="loadingMember || submitting"
@@ -29,7 +29,7 @@
           </div>
         </div>
         <p v-if="emailChecked && !validMember" class="mt-1 text-sm text-red-300">
-          Please enter a valid, known Case email.
+          Please enter a valid, known email address.
         </p>
       </div>
 
@@ -161,7 +161,7 @@
           <div class="flex items-start justify-between">
             <div>
               <h3 class="text-2xl font-bold text-white">Success!</h3>
-              <p class="mt-1 text-gray-300">The NCC will review your submission.</p>
+              <p class="mt-1 text-gray-300">An admin will review your submission.</p>
             </div>
             <button
               type="button"
@@ -191,6 +191,7 @@
 
 <script>
 import { fetchTable } from "../api/fetchTables";
+import { config } from "../config";
 
 const DEBUG = false;
 
@@ -235,6 +236,12 @@ export default {
   },
 
   computed: {
+    emailPlaceholder() {
+      return config.emailDomain ? `you@${config.emailDomain}` : "you@example.org";
+    },
+    emailDomainHint() {
+      return config.emailDomain ? ` Use your ${config.emailDomain} email.` : "";
+    },
     normalizedChallenges() {
       if (!Array.isArray(this.rawChallenges)) return [];
       return this.rawChallenges.map((r) => (r?.fields ? { id: r.id, ...r.fields } : r));
@@ -514,7 +521,7 @@ export default {
 
         if (!res.ok) {
           if (res.status === 404 && json?.error?.toLowerCase().includes("member not found")) {
-            throw new Error("Your email doesn't match our records. Use your Case email (abc123@case.edu).");
+            throw new Error(`Your email doesn't match our records.${this.emailDomainHint}`);
           }
           throw new Error(json.error || "Submission failed");
         }
@@ -532,7 +539,7 @@ export default {
         this.validMember = false;
       } catch (err) {
         console.error("Submit error:", err);
-        this.error = err.message || "Error submitting challenge. Contact NCC if issue persists.";
+        this.error = err.message || "Error submitting challenge. Contact an admin if the issue persists.";
       } finally {
         this.submitting = false;
       }

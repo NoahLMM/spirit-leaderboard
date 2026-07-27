@@ -2,7 +2,7 @@
   <div class="min-h-screen p-6 text-gray-100 bg-gray-900">
     <div class="max-w-5xl mx-auto">
       <h1 class="mb-8 text-4xl font-extrabold text-center text-white">
-        RHA Clash of Councils
+        {{ siteTitle }}
       </h1>
 
       <!-- Individual Leaderboard -->
@@ -29,7 +29,7 @@
               <div>
                 <p class="text-lg font-bold">{{ player.fields?.Name }}</p>
                 <p class="text-sm italic text-gray-400">
-                  {{ player.fields?.['Team Name']?.[0] || 'No Team' }}
+                  {{ player.fields?.['Team Name']?.[0] || `No ${groupLabel}` }}
                 </p>
               </div>
             </div>
@@ -54,7 +54,7 @@
 
       <!-- Team Leaderboard -->
       <section class="mb-10">
-        <h2 class="mb-4 text-2xl font-semibold text-gray-100">Council Leaderboard</h2>
+        <h2 class="mb-4 text-2xl font-semibold text-gray-100">{{ groupLabel }} Leaderboard</h2>
         <div class="space-y-3">
           <div
             v-for="(team, i) in teamLeaderboard"
@@ -118,7 +118,7 @@
             </p>
 
             <div class="flex items-center justify-between mb-2 text-sm text-gray-400">
-              <span>Team: {{ entry.fields?.['Team Name'] || 'No Team' }}</span>
+              <span>{{ groupLabel }}: {{ entry.fields?.['Team Name'] || `No ${groupLabel}` }}</span>
               <span class="font-semibold text-blue-400">
                 {{ intPoints(entry.fields?.Points) }} pts
               </span>
@@ -140,6 +140,7 @@
 
 <script>
 import { fetchTable } from "../api/fetchTables";
+import { config } from "../config";
 
 // Robust truthy check for Airtable fields (Yes/No single select, checkbox, number)
 function toBool(v) {
@@ -166,6 +167,8 @@ export default {
       leaderboard: [],
       feed: [],
       loading: false,
+      siteTitle: config.siteTitle,
+      groupLabel: config.groupLabel,
     };
   },
   computed: {
@@ -180,7 +183,7 @@ export default {
     teamLeaderboard() {
       const teamMap = {};
       this.leaderboard.forEach(player => {
-        const team = player.fields?.['Team Name']?.[0] || 'No Team';
+        const team = player.fields?.['Team Name']?.[0] || `No ${this.groupLabel}`;
         const points = intPoints(player.fields?.['Total Points']);
         const challenges = player.fields?.['NSubmissions'] || 0;
         if (!teamMap[team]) {

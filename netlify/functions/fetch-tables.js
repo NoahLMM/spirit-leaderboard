@@ -25,8 +25,6 @@ export const handler = async (event) => {
     }
     if (qs.maxRecords) queryOptions.maxRecords = parseInt(qs.maxRecords, 10);
 
-    console.log("Fetching", table, "with options:", queryOptions);
-
     const records = await base(table).select(queryOptions).all();
 
     // Preserve your existing shape: { id, fields }
