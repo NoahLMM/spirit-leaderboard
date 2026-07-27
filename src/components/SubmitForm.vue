@@ -66,7 +66,7 @@
         </select>
       </div>
       <p v-else-if="emailChecked && validMember" class="text-sm text-gray-300">
-        You’ve completed all available challenges 🎉 Check back later for new ones!
+        You’ve completed all available challenges. Check back later for new ones!
       </p>
 
       <!-- Selected challenge Description -->

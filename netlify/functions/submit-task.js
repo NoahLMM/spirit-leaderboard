@@ -15,7 +15,7 @@ export const handler = async (event) => {
     // 1. Look up member by email
     const members = await base("Members")
       .select({
-        filterByFormula: `{Email} = "${email}"`, // 👈 field name in Members table
+        filterByFormula: `{Email} = "${email}"`, // field name in Members table
         maxRecords: 1,
       })
       .firstPage();
@@ -33,7 +33,7 @@ export const handler = async (event) => {
     const created = await base("Submissions").create([
       {
         fields: {
-          Member: [memberId], // 👈 link to Members table
+          Member: [memberId], // link to Members table
           Challenge: [challengeId], // assuming Challenge is a linked field too
           Notes: notes || "",
           Proof: proofUrl ? [{ url: proofUrl }] : [],
