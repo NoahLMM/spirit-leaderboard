@@ -104,7 +104,7 @@
             <div class="flex items-center justify-between mb-2">
               <p class="text-lg font-bold">{{ entry.fields?.['Member Names'] || 'Unknown' }}</p>
               <span class="text-sm text-gray-400">
-                {{ formatDate(entry.fields?.Created) }}
+                {{ formatDate(entry.fields?.Created || entry.createdTime) }}
               </span>
             </div>
 
@@ -139,7 +139,7 @@
 </template>
 
 <script>
-import { fetchTable } from "../api/fetchTables";
+import { getData } from "../api/data";
 import { config } from "../config";
 
 // Robust truthy check for Airtable fields (Yes/No single select, checkbox, number)
@@ -204,15 +204,13 @@ export default {
     async loadData() {
       try {
         this.loading = true;
+        const data = await getData({ fresh: true });
         // Leaderboard from Members
-        this.leaderboard = await fetchTable("Members");
+        this.leaderboard = data.members;
 
-        // Recent Activity: only Approved submissions
-        this.feed = await fetchTable("Submissions", {
-          filterByFormula: "Approved = 1",
-          sort: [{ field: "Created", direction: "desc" }],
-          maxRecords: 100
-        });
+        // Recent Activity: get-data only returns Approved submissions
+        const created = (s) => new Date(s.fields?.Created || s.createdTime || 0).getTime();
+        this.feed = [...data.submissions].sort((a, b) => created(b) - created(a)).slice(0, 100);
       } catch (err) {
         console.error("Error loading data:", err);
       } finally {
@@ -238,7 +236,9 @@ export default {
   },
   mounted() {
     this.loadData();
-    setInterval(this.loadData, 60000);
+    // Data only changes when the cache syncs or someone submits, so a slow
+    // poll is plenty — and it never touches Airtable directly.
+    setInterval(this.loadData, 5 * 60 * 1000);
   },
 };
 </script>

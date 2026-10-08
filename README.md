@@ -52,6 +52,8 @@ values from steps 1–2, no code editing required.
 | `VITE_GROUP_LABEL` | No | What to call a member's group — Team, House, Chapter, etc. Defaults to "Team" |
 | `VITE_EMAIL_DOMAIN` | No | Your org's email domain, e.g. `acme.org`, used only for placeholder/hint text |
 | `VITE_FOOTER_TEXT` | No | An extra line shown in the footer |
+| `SYNC_INTERVAL_HOURS` | No | Hours between Airtable syncs. Defaults to 24 — see [How data stays within Airtable's free plan](#how-data-stays-within-airtables-free-plan) |
+| `SYNC_SECRET` | No | Any password you choose. Enables a link that syncs immediately (see below) |
 
 To change any of these later, edit them under your Netlify site's **Site
 configuration -> Environment variables**, then trigger a new deploy — no
@@ -75,6 +77,30 @@ Airtable:
 
 See [`docs/airtable-schema.md`](docs/airtable-schema.md) for the full
 field reference.
+
+### How data stays within Airtable's free plan
+
+Airtable's free plan allows about 1,000 API calls per month, so the site
+never reads Airtable directly. A scheduled function copies your base into
+Netlify's built-in storage (Netlify Blobs — nothing to set up) once a
+day, and visitors only ever read that copy. Only these use Airtable
+calls:
+
+- **Each sync:** one call per 100 records in each table. For example, 250
+  members, 40 challenges and 900 submissions is 3 + 1 + 9 = 13 calls,
+  or about 400 per month at one sync a day.
+- **Each submission:** one call.
+
+Each sync logs how many calls it used: see **Logs -> Functions ->
+sync-airtable** in Netlify. You can lower `SYNC_INTERVAL_HOURS` (e.g. to
+`12`) for faster updates if your base is small: check that calls per
+sync × syncs per month + submissions per month stays under 1,000.
+
+Because the site shows the cached copy, **approvals and new members
+appear after the next sync**, not right away. To sync on demand, set
+`SYNC_SECRET` and visit
+`https://<your-site>/.netlify/functions/refresh-data?key=<SYNC_SECRET>`.
+Each visit costs one sync's worth of calls.
 
 ## Local development
 

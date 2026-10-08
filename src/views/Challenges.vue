@@ -145,7 +145,7 @@
 </template>
 
 <script>
-import { fetchTable } from "../api/fetchTables";
+import { getData } from "../api/data";
 
 // Normalize CSV/Airtable shapes: "Yes"/"No", true/false, 1/0, arrays, etc.
 function toBool(v) {
@@ -286,8 +286,8 @@ export default {
       this.loading = true;
       this.error = "";
       try {
-        const records = await fetchTable("Challenges");
-        this.raw = Array.isArray(records) ? records : [];
+        const { challenges } = await getData();
+        this.raw = Array.isArray(challenges) ? challenges : [];
       } catch (e) {
         console.error(e);
         this.error = "Could not load challenges.";

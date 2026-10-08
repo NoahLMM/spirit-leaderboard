@@ -1,39 +1,31 @@
-import Airtable from "airtable";
+import {
+  airtableBase,
+  getSnapshot,
+  saveSnapshot,
+  saveProofUrl,
+  findMemberByEmail,
+  toRecord,
+  json,
+} from "../lib/snapshot.js";
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY })
-  .base(process.env.AIRTABLE_BASE_ID);
+export default async (req) => {
+  if (req.method !== "POST") return json({ error: "Method Not Allowed" }, 405);
 
-export const handler = async (event) => {
   try {
-    if (event.httpMethod !== "POST") {
-      return { statusCode: 405, body: "Method Not Allowed" };
+    const { email, challengeId, notes, proofUrl, shareReflection } = await req.json();
+
+    // 1. Look up member by email in the cache (saves an Airtable call)
+    const snapshot = await getSnapshot();
+    const member = findMemberByEmail(snapshot, email);
+    if (!member) {
+      return json({ error: "Member not found for this email" }, 404);
     }
 
-    const data = JSON.parse(event.body);
-    const { email, challengeId, notes, proofUrl, shareReflection } = data;
-
-    // 1. Look up member by email
-    const members = await base("Members")
-      .select({
-        filterByFormula: `{Email} = "${email}"`, // field name in Members table
-        maxRecords: 1,
-      })
-      .firstPage();
-
-    if (members.length === 0) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({ error: "Member not found for this email" }),
-      };
-    }
-
-    const memberId = members[0].id; // Airtable record ID of the member
-
-    // 2. Create new submission linked to the member
-    const created = await base("Submissions").create([
+    // 2. Create new submission linked to the member — the only Airtable call
+    const created = await airtableBase()("Submissions").create([
       {
         fields: {
-          Member: [memberId], // link to Members table
+          Member: [member.id], // link to Members table
           Challenge: [challengeId], // assuming Challenge is a linked field too
           Notes: notes || "",
           Proof: proofUrl ? [{ url: proofUrl }] : [],
@@ -42,15 +34,15 @@ export const handler = async (event) => {
       },
     ]);
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ success: true, record: created[0] }),
-    };
+    // 3. Add it to the cache right away so the member can't resubmit a
+    //    non-repeatable challenge before the next sync
+    snapshot.tables.Submissions.push(toRecord(created[0]));
+    await saveSnapshot(snapshot);
+    if (proofUrl) await saveProofUrl(created[0].id, proofUrl);
+
+    return json({ success: true, record: { id: created[0].id } });
   } catch (err) {
     console.error("Submit error:", err);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
-    };
+    return json({ error: err.message }, 500);
   }
 };

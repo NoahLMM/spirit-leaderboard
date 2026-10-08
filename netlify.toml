@@ -12,6 +12,8 @@
   VITE_GROUP_LABEL = "What to call a member's group, e.g. Team/House/Chapter (defaults to Team)"
   VITE_EMAIL_DOMAIN = "Optional: your org's email domain, used only for placeholder/hint text"
   VITE_FOOTER_TEXT = "Optional: extra line shown in the footer"
+  SYNC_INTERVAL_HOURS = "Optional: hours between Airtable syncs (defaults to 24)"
+  SYNC_SECRET = "Optional: password for the manual refresh link - leave blank to disable it"
 
 [[redirects]]
   from = "/.netlify/functions/*"

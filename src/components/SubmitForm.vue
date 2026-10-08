@@ -190,7 +190,7 @@
 </template>
 
 <script>
-import { fetchTable } from "../api/fetchTables";
+import { getData, lookupMember } from "../api/data";
 import { config } from "../config";
 
 const DEBUG = false;
@@ -334,40 +334,15 @@ export default {
     async loadChallenges() {
       try {
         this.loadingChallenges = true;
-        const filterByFormula = [
-          "OR(",
-          " {Is Active} = TRUE(),",
-          " {Is Active} = 1,",
-          ' LOWER({Is Active} & "") = "yes"',
-          ")",
-        ].join("");
-        const records = await fetchTable("Challenges", { filterByFormula });
-        this.rawChallenges = Array.isArray(records) ? records : [];
+        // Inactive challenges are filtered out by activeChallenges
+        const { challenges } = await getData();
+        this.rawChallenges = Array.isArray(challenges) ? challenges : [];
       } catch (err) {
         console.error("Error fetching challenges:", err);
         this.error = "Could not load challenges.";
       } finally {
         this.loadingChallenges = false;
       }
-    },
-
-    // Batch-fetch submissions by record IDs from the Member row
-    async fetchSubmissionsByIds(ids = []) {
-      if (!ids.length) return [];
-      const chunks = (arr, size) => {
-        const out = [];
-        for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-        return out;
-      };
-      const groups = chunks(ids, 50);
-      const acc = [];
-      for (const group of groups) {
-        const orParts = group.map((id) => `RECORD_ID() = "${String(id).replace(/"/g, '\\"')}"`);
-        const formula = `OR(${orParts.join(",")})`;
-        const res = await fetchTable("Submissions", { filterByFormula: formula, maxRecords: 50 });
-        if (Array.isArray(res)) acc.push(...res);
-      }
-      return acc;
     },
 
     async loadMemberSubmissions() {
@@ -396,49 +371,21 @@ export default {
       }
 
       try {
-        // 1) Member lookup (case-insensitive)
-        const members = await fetchTable("Members", {
-          filterByFormula: `LOWER({Email}) = LOWER("${email.replace(/"/g, '\\"')}")`,
-          maxRecords: 1,
-        });
+        // Member lookup (case-insensitive) plus the challenges they and their
+        // team have already submitted, all from the server-side cache
+        const res = await lookupMember(email);
 
-        if (!Array.isArray(members) || members.length === 0) {
+        if (!res.found) {
           this.emailChecked = true;
           this.validMember = false;
           return;
         }
 
-        const member = members[0];
-        const memberId = member.id;
-        this.memberName = member.fields?.Name || "";
+        this.memberName = res.name;
         this.validMember = true;
-
-        // 2) Get the member's linked submission IDs directly from the Member row
-        const linkedIds =
-          Array.isArray(member.fields?.Submissions) ? member.fields.Submissions : [];
-        // 3) Fetch those submissions by ID
-        this.memberSubmissions = await this.fetchSubmissionsByIds(linkedIds);
-
-        // 4) Team submissions: by team name(s)
-        const teamNames =
-          Array.isArray(member.fields?.["Team Name"])
-            ? member.fields["Team Name"].filter(Boolean)
-            : (member.fields?.["Team Name"] ? [member.fields["Team Name"]] : []);
-
-        this.memberTeamNames = teamNames;
-
-        if (teamNames.length > 0) {
-          const parts = teamNames.map(
-            (tn) => `LOWER({Team Name} & "") = LOWER("${String(tn).replace(/"/g, '\\"')}")`
-          );
-          const teamFormula = `OR(${parts.join(",")})`;
-
-          const teamRes = await fetchTable("Submissions", {
-            filterByFormula: teamFormula,
-            maxRecords: 500,
-          });
-          this.teamSubmissions = Array.isArray(teamRes) ? teamRes : [];
-        }
+        this.memberSubmissions = res.memberSubmissions;
+        this.teamSubmissions = res.teamSubmissions;
+        this.memberTeamNames = res.teamNames;
 
         this.emailChecked = true;
       } catch (err) {
